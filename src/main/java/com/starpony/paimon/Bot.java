@@ -3,16 +3,14 @@ package com.starpony.paimon;
 import com.starpony.paimon.commands.InfoCommand;
 import com.starpony.paimon.commands.SlashCommand;
 import com.starpony.paimon.listeners.CommandListener;
-import discord4j.core.DiscordClient;
+import com.starpony.paimon.listeners.MessageListener;
+import com.starpony.paimon.listeners.OnConnectListener;
 import discord4j.core.DiscordClientBuilder;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.event.domain.lifecycle.ReadyEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
-import discord4j.core.object.entity.Message;
-import discord4j.core.object.entity.User;
 import discord4j.discordjson.json.ApplicationCommandRequest;
-import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -44,7 +42,9 @@ public class Bot {
 
         System.out.println("Регистрация обработчиков");
         //  Регистрация обработчиков событий
-        client.on(ChatInputInteractionEvent.class, new CommandListener(commands)::handle)
-                .then(client.onDisconnect()).block();
+        client.on(ReadyEvent.class, new OnConnectListener()::handle).then()
+                .and(client.on(MessageCreateEvent.class, new MessageListener()::handle).then())
+                .and(client.on(ChatInputInteractionEvent.class, new CommandListener(commands)::handle).then())
+                .block();
     }
 }
