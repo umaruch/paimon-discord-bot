@@ -1,38 +1,50 @@
 package com.starpony.paimon;
 
+import com.starpony.paimon.commands.InfoCommand;
+import com.starpony.paimon.commands.SlashCommand;
+import com.starpony.paimon.listeners.CommandListener;
 import discord4j.core.DiscordClient;
+import discord4j.core.DiscordClientBuilder;
 import discord4j.core.GatewayDiscordClient;
+import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.event.domain.lifecycle.ReadyEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.User;
+import discord4j.discordjson.json.ApplicationCommandRequest;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+
 public class Bot {
+    private final static List<SlashCommand> commands = new LinkedList<>();
+
+    static {
+        // Заполнение списка комманд
+        commands.add(new InfoCommand());
+    }
+
     public static void main(String[] args) {
-        DiscordClient client = DiscordClient.create("MTA2ODU5MTEzMDEzMzkzODI2Nw.GnP3sJ.0v4qBhpzdFo9OsRCJ6BPXCYrLgOcX2psHtnGho");
+        Configuration configuration = new Configuration();
+        GatewayDiscordClient client = DiscordClientBuilder.create(configuration.getDiscordToken()).build().login().block();
 
-        Mono<Void> login = client.withGateway((GatewayDiscordClient gateway) -> {
-            //  Пишет информацию о боте при успешном подключении
-            Mono<Void> printInfoOnLogin = gateway.on(ReadyEvent.class, readyEvent ->
-                    Mono.fromRunnable(() -> {
-                        final User self = readyEvent.getSelf();
-                        System.out.printf("Logged in as %s#%s%n", self.getUsername(), self.getDiscriminator());
-                    })).then();
-            //  Обработка сообщений пользователя
-            Mono<Void> handlePingCommand = gateway.on(MessageCreateEvent.class, messageCreateEvent -> {
-                    Message message = messageCreateEvent.getMessage();
+        //  Регистрация комманд приложения для отображения в клиенте Discord
+        System.out.println("Регистрация команд на сервере");
+        List<ApplicationCommandRequest> commandRequests = new ArrayList<>();
+        for (SlashCommand command: commands) {
+            commandRequests.add(command.toCommandRequest());
+        }
+        client.getRestClient().getApplicationService().bulkOverwriteGlobalApplicationCommand(
+                client.getRestClient().getApplicationId().block(), commandRequests
+        ).doOnNext(cmd -> System.out.println(cmd.name() + " successfully registered"))
+                .doOnError(e -> System.out.println("Failed to register global commands " + e))
+                .subscribe();
 
-                    if (message.getContent().equalsIgnoreCase("/ping")) {
-                        return  message.getChannel().flatMap(channel -> channel.createMessage("pong!"));
-                    }
-
-                    return Mono.empty();
-                    }).then();
-
-            return printInfoOnLogin.and(handlePingCommand);
-        });
-
-        login.block();
+        System.out.println("Регистрация обработчиков");
+        //  Регистрация обработчиков событий
+        client.on(ChatInputInteractionEvent.class, new CommandListener(commands)::handle)
+                .then(client.onDisconnect()).block();
     }
 }
